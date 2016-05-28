@@ -1,0 +1,109 @@
+# Build =====================================================
+
+FROM ubuntu:16.04
+MAINTAINER Patrick Valsecchi<patrick.valsecchi@camptocamp.com>
+MOUNT ../..:/src
+MOUNT tmp/apt-cache:/var/cache/apt/archives/
+MOUNT tmp/apt-lists:/var/lib/apt/lists/
+
+RUN apt-get -y update
+
+RUN LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y cmake flex bison libproj-dev \
+    libgeos-dev libgdal1-dev \
+    libexpat1-dev libfcgi-dev libgsl0-dev libpq-dev libqca2-dev libqca2-plugin-ossl \
+    libqscintilla2-dev libqt4-dev libqt4-opengl-dev libqt4-sql-sqlite \
+    libqtwebkit-dev libqwt-dev libspatialindex-dev libspatialite-dev libsqlite3-dev \
+    lighttpd locales pkg-config poppler-utils pyqt4-dev-tools python python-dev \
+    python-qt4 python-qt4-dev python-qt4-sql python-sip python-sip-dev \
+    spawn-fcgi xauth xfonts-100dpi xfonts-75dpi xfonts-base xfonts-scalable xvfb \
+    git
+
+RUN mkdir -p /src/docker/server/tmp/build && \
+    cd /src/docker/server/tmp/build && \
+    cmake /src \
+      -DQWT_INCLUDE_DIR=/usr/include/qwt \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython2.7.so \
+      -DQSCINTILLA_INCLUDE_DIR=/usr/include/qt4 \
+      -DQWT_LIBRARY=/usr/lib/libqwt.so \
+      -DWITH_DESKTOP=OFF \
+      -DWITH_SERVER=ON \
+      -DBUILD_TESTING=OFF  \
+      -DWITH_INTERNAL_QWTPOLAR=ON
+
+RUN cd /src/docker/server/tmp/build && \
+    make -j8
+
+RUN cd /src/docker/server/tmp/build/output && \
+    strip `find bin -perm 0755 -type f` && \
+    strip lib/*.so.* && \
+    strip python/qgis/*.so
+
+
+# Server ===================================================
+
+FROM ubuntu:16.04
+MOUNT tmp/build:/build
+MOUNT tmp/apt-cache:/var/cache/apt/archives/
+MOUNT tmp/apt-lists:/var/lib/apt/lists/
+
+# A few variables needed by apache
+ENV APACHE_CONFDIR /etc/apache2
+ENV APACHE_ENVVARS $APACHE_CONFDIR/envvars
+ENV APACHE_RUN_USER www-data
+ENV APACHE_RUN_GROUP www-data
+ENV APACHE_RUN_DIR /var/run/apache2
+ENV APACHE_PID_FILE $APACHE_RUN_DIR/apache2.pid
+ENV APACHE_LOCK_DIR /var/lock/apache2
+ENV APACHE_LOG_DIR /var/log/apache2
+ENV LANG C
+
+RUN apt-get -y update && \
+    LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y libproj9 libgeos-3.5.0 libgdal1i \
+      libexpat1 libfcgi libgsl2 libpq5 libqca2 libqca2-plugin-ossl \
+      libqscintilla2-12v5 libqt4-opengl libqt4-sql-sqlite \
+      libqtwebkit4 libqwt6abi1 libspatialindex4v5 libspatialite7 libsqlite3-0 \
+      python python-qt4 python-qt4-sql \
+      spawn-fcgi xauth xfonts-100dpi xfonts-75dpi xfonts-base xfonts-scalable xvfb \
+      apache2 libapache2-mod-fcgid
+#    apt-get clean && \
+#    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+
+RUN cd /build && \
+    cp -a output/bin/qgis_mapserv.fcgi /usr/lib/cgi-bin/ && \
+    cp -a output/lib/* /usr/lib/ && \
+    mkdir -p /usr/share/qgis && \
+    cp -a images python resources /usr/share/qgis/ && \
+    ldconfig
+
+RUN a2enmod fcgid && \
+    a2dismod -f auth_basic authn_file authn_core authz_host authz_user autoindex dir status && \
+    rm /etc/apache2/mods-enabled/alias.conf && \
+    mkdir -p $APACHE_RUN_DIR $APACHE_LOCK_DIR $APACHE_LOG_DIR && \
+    sed -ri ' \
+      s!^(\s*CustomLog)\s+\S+!\1 /proc/self/fd/1!g; \
+      s!^(\s*ErrorLog)\s+\S+!\1 /proc/self/fd/2!g; \
+      ' /etc/apache2/sites-enabled/000-default.conf /etc/apache2/apache2.conf && \
+    mkdir -p /var/www/.qgis2 && \
+    mkdir -p /var/www/plugins && \
+    chown www-data: /var/www/.qgis2
+
+# A few tunable variables for QGIS
+ENV QGIS_SERVER_LOG_LEVEL 1
+ENV QGIS_SERVER_LOG_FILE /proc/self/fd/1
+ENV PGSERVICEFILE /project/pg_service.conf
+ENV QGIS_PROJECT_FILE /project/project.qgs
+ENV MAX_CACHE_LAYERS ""
+ENV QGIS_PLUGINPATH /var/www/plugins
+
+COPY runtime /
+
+EXPOSE 80
+
+CMD ["apache2", "-DFOREGROUND"]
+TAG pvalsecc/qgis-server:{{or .Env.DOCKER_VERSION "latest"}}
+
+
+# TODO: desktop

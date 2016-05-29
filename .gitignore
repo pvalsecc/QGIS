@@ -65,3 +65,7 @@ python/plugins/processing/tests/testdata/custom/grass7/float_raster.tif.aux.xml
 python/plugins/processing/tests/testdata/custom/grass7/raster_1class.tif.aux.xml
 Thumb.db
 /docker/tmp
+/docker/compose-home/.cache
+/docker/compose-home/.qgis2/cache
+/docker/compose-home/.qgis2/themes
+/docker/compose-home/.qgis2/previewImages

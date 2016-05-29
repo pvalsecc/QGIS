@@ -1,0 +1,16 @@
+client:
+  image: pvalsecc/qgis-desktop:latest
+  links:
+    - server:server
+  volumes:
+    - $PWD/compose-home:$HOME
+    - /tmp/.X11-unix:/tmp/.X11-unix
+  environment: 
+    - DISPLAY=unix${DISPLAY}
+
+server:
+  image: pvalsecc/qgis-server:latest
+  ports:
+    - 8380:80
+  volumes:
+    - $PWD/tests:/project

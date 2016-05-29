@@ -2,11 +2,12 @@ client:
   image: pvalsecc/qgis-desktop:latest
   links:
     - server:server
+    - db:db
   volumes:
     - $PWD/compose-home:$HOME
     - /tmp/.X11-unix:/tmp/.X11-unix
   environment: 
-    - DISPLAY=unix${DISPLAY}
+    DISPLAY: unix${DISPLAY}
 
 server:
   image: pvalsecc/qgis-server:latest
@@ -14,3 +15,14 @@ server:
     - 8380:80
   volumes:
     - $PWD/tests:/project
+    
+db:
+  image: camptocamp/postgis:9.5
+  volumes:
+    - /var/lib/postgresql/data
+  ports:
+    - 15432:5432
+  environment:
+    POSTGRES_USER: qgis
+    POSTGRES_PASSWORD: qgis
+    POSTGRES_DB: qgis

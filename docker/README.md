@@ -33,7 +33,7 @@ docker run -ti -e DISPLAY=unix$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v $HOME
 ```
 
 
-# Both together
+## Both together
 
 From the docker directory of the QGIS source code, run:
 ```bash

@@ -6,7 +6,8 @@ MOUNT ../..:/src
 MOUNT tmp/apt-cache:/var/cache/apt/archives/
 MOUNT tmp/apt-lists:/var/lib/apt/lists/
 
-RUN apt-get -y update
+RUN rm /etc/apt/apt.conf.d/docker-clean && \
+    apt-get -y update
 
 RUN LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y cmake flex bison libproj-dev \
     libgeos-dev libgdal1-dev \
@@ -32,19 +33,21 @@ RUN mkdir -p /src/docker/server/tmp/build && \
       -DBUILD_TESTING=OFF  \
       -DWITH_INTERNAL_QWTPOLAR=ON
 
-RUN cd /src/docker/server/tmp/build && \
-    make -j8
+RUN cd  /src/docker/server/tmp/build && \
+    make -j8 install
 
-RUN cd /src/docker/server/tmp/build/output && \
-    strip `find bin -perm 0755 -type f` && \
-    strip lib/*.so.* && \
-    strip python/qgis/*.so
+RUN mv /usr/bin/qgis_mapserv.fcgi /usr/lib/cgi-bin && \
+    strip /usr/lib/cgi-bin/qgis_mapserv.fcgi && \
+    strip /usr/lib/libqgis*.so.* && \
+    strip /usr/share/qgis/python/qgis/*.so && \
+    strip `find /usr/lib/qgis/ -type f`
+
+EXPORT /usr/share/qgis
 
 
 # Server ===================================================
 
 FROM ubuntu:16.04
-MOUNT tmp/build:/build
 MOUNT tmp/apt-cache:/var/cache/apt/archives/
 MOUNT tmp/apt-lists:/var/lib/apt/lists/
 
@@ -59,7 +62,8 @@ ENV APACHE_LOCK_DIR /var/lock/apache2
 ENV APACHE_LOG_DIR /var/log/apache2
 ENV LANG C
 
-RUN apt-get -y update && \
+RUN rm /etc/apt/apt.conf.d/docker-clean && \
+    apt-get -y update && \
     LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y libproj9 libgeos-3.5.0 libgdal1i \
       libexpat1 libfcgi libgsl2 libpq5 libqca2 libqca2-plugin-ossl \
       libqscintilla2-12v5 libqt4-opengl libqt4-sql-sqlite \
@@ -67,20 +71,14 @@ RUN apt-get -y update && \
       python python-qt4 python-qt4-sql \
       spawn-fcgi xauth xfonts-100dpi xfonts-75dpi xfonts-base xfonts-scalable xvfb \
       apache2 libapache2-mod-fcgid
-#    apt-get clean && \
-#    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-
+MOUNT tmp/build:/build
 RUN cd /build && \
     cp -a output/bin/qgis_mapserv.fcgi /usr/lib/cgi-bin/ && \
     cp -a output/lib/* /usr/lib/ && \
-    mkdir -p /usr/share/qgis && \
-    cp -a images python resources /usr/share/qgis/ && \
     ldconfig
 
-MOUNT ../../resources:/resources
-RUN cd /resources && \
-    cp -r cpt-city-qgis-min customization.xml qgis.db spatialite.db srs.db symbology-ng-style.db /usr/share/qgis/resources
+IMPORT qgis /usr/share/
 
 RUN a2enmod fcgid && \
     a2dismod -f auth_basic authn_file authn_core authz_host authz_user autoindex dir status && \
@@ -97,8 +95,8 @@ RUN a2enmod fcgid && \
     chown www-data: /var/log/docker
 
 # A few tunable variables for QGIS
-ENV QGIS_SERVER_LOG_LEVEL 3
-ENV QGIS_SERVER_LOG_FILE /dev/null
+ENV QGIS_SERVER_LOG_LEVEL 0
+ENV QGIS_SERVER_LOG_FILE /var/log/docker
 ENV PGSERVICEFILE /project/pg_service.conf
 ENV QGIS_PROJECT_FILE /project/project.qgs
 ENV MAX_CACHE_LAYERS ""
@@ -109,7 +107,7 @@ COPY runtime /
 EXPOSE 80
 WORKDIR /project
 
-CMD ["apache2", "-DFOREGROUND"]
+CMD while true; do echo "Listening"; cat /var/log/docker; done & apache2 -DFOREGROUND
 TAG pvalsecc/qgis-server:{{or .Env.DOCKER_VERSION "latest"}}
 
 

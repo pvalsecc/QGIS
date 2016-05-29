@@ -1,6 +1,8 @@
-# Docker image for QGIS server
+# Docker image for QGIS server and desktop
 
-## Usage
+## Server
+
+### Usage
 
 Expects a `project.qgs` project file and all the files it depends on in the `/project/`
 directory. Either you create another image to add those files or you inject them using
@@ -13,7 +15,7 @@ With the previous command, you'll get to your server with this URL:
 http://localhost:8380/?SERVICE=WMS&REQUEST=GetCapabilities
 
 
-## Tunning
+### Tunning
 
 You can use the following variables (`-e` option in `docker run`):
 
@@ -21,3 +23,11 @@ You can use the following variables (`-e` option in `docker run`):
 * QGIS_SERVER_LOG_FILE: To output the logs to a file (default to stdout)
 * PGSERVICEFILE: If you want to change the default of `/project/pg_service.conf`
 * QGIS_PROJECT_FILE: If you want to change the default of `/project/project.qgs`
+
+
+## Client
+
+To run the client, type this command:
+```bash
+docker run -ti -e DISPLAY=unix$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v $HOME:$HOME pvalsecc/qgis-desktop:latest
+```

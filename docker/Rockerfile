@@ -2,7 +2,7 @@
 
 FROM ubuntu:16.04
 MAINTAINER Patrick Valsecchi<patrick.valsecchi@camptocamp.com>
-MOUNT ../..:/src
+MOUNT ..:/src
 MOUNT tmp/apt-cache:/var/cache/apt/archives/
 MOUNT tmp/apt-lists:/var/lib/apt/lists/
 
@@ -19,8 +19,10 @@ RUN LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y cmake flex bison 
     spawn-fcgi xauth xfonts-100dpi xfonts-75dpi xfonts-base xfonts-scalable xvfb \
     git
 
-RUN mkdir -p /src/docker/server/tmp/build && \
-    cd /src/docker/server/tmp/build && \
+TAG pvalsecc/qgis-build:{{or .Env.DOCKER_VERSION "latest"}}
+    
+RUN mkdir -p /src/docker/tmp/build && \
+    cd /src/docker/tmp/build && \
     cmake /src \
       -DQWT_INCLUDE_DIR=/usr/include/qwt \
       -DCMAKE_BUILD_TYPE=Release \
@@ -28,21 +30,19 @@ RUN mkdir -p /src/docker/server/tmp/build && \
       -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython2.7.so \
       -DQSCINTILLA_INCLUDE_DIR=/usr/include/qt4 \
       -DQWT_LIBRARY=/usr/lib/libqwt.so \
-      -DWITH_DESKTOP=OFF \
+      -DWITH_DESKTOP=ON \
       -DWITH_SERVER=ON \
       -DBUILD_TESTING=OFF  \
       -DWITH_INTERNAL_QWTPOLAR=ON
 
-RUN cd  /src/docker/server/tmp/build && \
+RUN cd  /src/docker/tmp/build && \
     make -j8 install
 
-RUN mv /usr/bin/qgis_mapserv.fcgi /usr/lib/cgi-bin && \
-    strip /usr/lib/cgi-bin/qgis_mapserv.fcgi && \
-    strip /usr/lib/libqgis*.so.* && \
+RUN strip `find /src/docker/tmp/build/output/bin -executable -type f` && \
+    strip /src/docker/tmp/build/output/lib/*.so.* && \
     strip /usr/share/qgis/python/qgis/*.so && \
-    strip `find /usr/lib/qgis/ -type f`
-
-EXPORT /usr/share/qgis
+    strip `find /src/docker/tmp/build/output/lib/qgis/ -type f` && \
+    cp -a /usr/share/qgis /src/docker/tmp/build/share-qgis
 
 
 # Server ===================================================
@@ -76,9 +76,8 @@ MOUNT tmp/build:/build
 RUN cd /build && \
     cp -a output/bin/qgis_mapserv.fcgi /usr/lib/cgi-bin/ && \
     cp -a output/lib/* /usr/lib/ && \
+    cp -a share-qgis /usr/share/qgis && \
     ldconfig
-
-IMPORT qgis /usr/share/
 
 RUN a2enmod fcgid && \
     a2dismod -f auth_basic authn_file authn_core authz_host authz_user autoindex dir status && \
@@ -111,4 +110,29 @@ CMD while true; do echo "Listening"; cat /var/log/docker; done & apache2 -DFOREG
 TAG pvalsecc/qgis-server:{{or .Env.DOCKER_VERSION "latest"}}
 
 
-# TODO: desktop
+# desktop ===============================================
+
+FROM ubuntu:16.04
+
+RUN rm /etc/apt/apt.conf.d/docker-clean && \
+    apt-get -y update && \
+    LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y libproj9 libgeos-3.5.0 libgdal1i \
+      libexpat1 libfcgi libgsl2 libpq5 libqca2 libqca2-plugin-ossl \
+      libqscintilla2-12v5 libqt4-opengl libqt4-sql-sqlite \
+      libqtwebkit4 libqwt6abi1 libspatialindex4v5 libspatialite7 libsqlite3-0 \
+      python python-qt4 python-qt4-sql \
+      xauth xfonts-100dpi xfonts-75dpi xfonts-base xfonts-scalable xvfb
+RUN apt-get install -y python-gdal python-psycopg2 python-qscintilla2 python-pil python-shapely #TODO: merge
+      
+MOUNT tmp/build:/build
+RUN cd /build && \
+    cp -a output/bin/qgis /usr/bin/ && \
+    cp -a output/lib/* /usr/lib/ && \
+    cp -a share-qgis /usr/share/qgis && \
+    ldconfig
+
+COPY start-client.sh /usr/bin/
+CMD start-client.sh
+TAG pvalsecc/qgis-desktop:{{or .Env.DOCKER_VERSION "latest"}}
+
+

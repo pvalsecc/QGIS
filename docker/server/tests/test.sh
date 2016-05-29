@@ -14,8 +14,8 @@ function checkUrl {
   fi
 }
 
-docker stop server || true
-docker rm server || true
+docker stop server 2>/dev/null || true
+docker rm server 2>/dev/null || true
 
 #docker build -t qgis-server ..
 docker run -d -p 8380:80 --volume=$PWD:/project --name server pvalsecc/qgis-server:latest

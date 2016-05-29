@@ -78,6 +78,10 @@ RUN cd /build && \
     cp -a images python resources /usr/share/qgis/ && \
     ldconfig
 
+MOUNT ../../resources:/resources
+RUN cd /resources && \
+    cp -r cpt-city-qgis-min customization.xml qgis.db spatialite.db srs.db symbology-ng-style.db /usr/share/qgis/resources
+
 RUN a2enmod fcgid && \
     a2dismod -f auth_basic authn_file authn_core authz_host authz_user autoindex dir status && \
     rm /etc/apache2/mods-enabled/alias.conf && \
@@ -88,11 +92,13 @@ RUN a2enmod fcgid && \
       ' /etc/apache2/sites-enabled/000-default.conf /etc/apache2/apache2.conf && \
     mkdir -p /var/www/.qgis2 && \
     mkdir -p /var/www/plugins && \
-    chown www-data: /var/www/.qgis2
+    chown www-data: /var/www/.qgis2 && \
+    mknod /var/log/docker p && \
+    chown www-data: /var/log/docker
 
 # A few tunable variables for QGIS
-ENV QGIS_SERVER_LOG_LEVEL 1
-ENV QGIS_SERVER_LOG_FILE /proc/self/fd/1
+ENV QGIS_SERVER_LOG_LEVEL 3
+ENV QGIS_SERVER_LOG_FILE /dev/null
 ENV PGSERVICEFILE /project/pg_service.conf
 ENV QGIS_PROJECT_FILE /project/project.qgs
 ENV MAX_CACHE_LAYERS ""
@@ -101,6 +107,7 @@ ENV QGIS_PLUGINPATH /var/www/plugins
 COPY runtime /
 
 EXPOSE 80
+WORKDIR /project
 
 CMD ["apache2", "-DFOREGROUND"]
 TAG pvalsecc/qgis-server:{{or .Env.DOCKER_VERSION "latest"}}

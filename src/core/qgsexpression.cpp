@@ -5026,6 +5026,17 @@ QString QgsExpression::formatPreviewString( const QVariant& value )
       return previewString.prepend( '\'' ).append( '\'' );
     }
   }
+  else if ( value.type() == QVariant::Map )
+  {
+    QString mapStr;
+    const QVariantMap map = value.toMap();
+    for ( QVariantMap::const_iterator it = map.constBegin(); it != map.constEnd(); ++it )
+    {
+      if ( !mapStr.isEmpty() ) mapStr.append( ", " );
+      mapStr.append( it.key() ).append( ": " ).append( formatPreviewString( it.value() ) );
+    }
+    return tr( "<i>&lt;map: %1&gt;</i>" ).arg( mapStr );
+  }
   else
   {
     return value.toString();

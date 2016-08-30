@@ -269,6 +269,7 @@
 %Include editorwidgets/qgsdatetimesearchwidgetwrapper.sip
 %Include editorwidgets/qgsdefaultsearchwidgetwrapper.sip
 %Include editorwidgets/qgsdoublespinbox.sip
+%Include editorwidgets/qgskeyvaluewidget.sip
 %Include editorwidgets/qgsmultiedittoolbutton.sip
 %Include editorwidgets/qgsrelationreferencesearchwidgetwrapper.sip
 %Include editorwidgets/qgsrelationreferencewidget.sip

@@ -17,8 +17,6 @@
 #include "qgsvectorlayer.h"
 #include "qgsvectordataprovider.h"
 
-#include <QDebug>
-
 QgsVectorLayerEditPassthrough::QgsVectorLayerEditPassthrough( QgsVectorLayer* layer )
     : mModified( false )
 {

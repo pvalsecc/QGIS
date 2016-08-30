@@ -116,6 +116,9 @@ SET(QGIS_GUI_SRCS
   editorwidgets/qgsfilenamewidgetfactory.cpp
   editorwidgets/qgshiddenwidgetwrapper.cpp
   editorwidgets/qgshiddenwidgetfactory.cpp
+  editorwidgets/qgskeyvaluewidget.cpp
+  editorwidgets/qgskeyvaluewidgetfactory.cpp
+  editorwidgets/qgskeyvaluewidgetwrapper.cpp
   editorwidgets/qgsmultiedittoolbutton.cpp
   editorwidgets/qgsphotoconfigdlg.cpp
   editorwidgets/qgsphotowidgetwrapper.cpp
@@ -561,6 +564,8 @@ SET(QGIS_GUI_MOC_HDRS
   editorwidgets/qgsexternalresourcewidgetwrapper.h
   editorwidgets/qgsfilenamewidgetwrapper.h
   editorwidgets/qgshiddenwidgetwrapper.h
+  editorwidgets/qgskeyvaluewidget.h
+  editorwidgets/qgskeyvaluewidgetwrapper.h
   editorwidgets/qgsmultiedittoolbutton.h
   editorwidgets/qgsphotoconfigdlg.h
   editorwidgets/qgsphotowidgetwrapper.h
@@ -675,6 +680,7 @@ SET(QGIS_GUI_HDRS
   editorwidgets/qgsexternalresourcewidgetfactory.h
   editorwidgets/qgsfilenamewidgetfactory.h
   editorwidgets/qgshiddenwidgetfactory.h
+  editorwidgets/qgskeyvaluewidgetfactory.h
   editorwidgets/qgsphotowidgetfactory.h
   editorwidgets/qgsrangewidgetfactory.h
   editorwidgets/qgsrelationreferencefactory.h
@@ -730,6 +736,7 @@ SET(QGIS_GUI_UI_HDRS
   ${CMAKE_CURRENT_BINARY_DIR}/../ui/ui_qgsexpressionbuilder.h
   ${CMAKE_CURRENT_BINARY_DIR}/../ui/ui_qgsexpressionselectiondialogbase.h
   ${CMAKE_CURRENT_BINARY_DIR}/../ui/ui_qgsgenericprojectionselectorbase.h
+  ${CMAKE_CURRENT_BINARY_DIR}/../ui/ui_qgskeyvaluewidgetbase.h
   ${CMAKE_CURRENT_BINARY_DIR}/../ui/ui_qgsmessagelogviewer.h
   ${CMAKE_CURRENT_BINARY_DIR}/../ui/ui_qgsmessageviewer.h
   ${CMAKE_CURRENT_BINARY_DIR}/../ui/ui_qgsowssourceselectbase.h

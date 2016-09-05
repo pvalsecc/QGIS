@@ -249,6 +249,8 @@ class QgsPostgresProvider : public QgsVectorDataProvider
      */
     virtual QgsTransaction* transaction() const override;
 
+    static QVariant convertValue( QVariant::Type type, const QString& value );
+
   signals:
     /**
      *   This is emitted whenever the worker thread has fully calculated the

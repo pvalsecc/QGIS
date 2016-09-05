@@ -930,6 +930,35 @@ QString QgsPostgresConn::quotedIdentifier( QString ident )
   return ident;
 }
 
+static QString quotedString( QString v )
+{
+  v.replace( '\'', "''" );
+  if ( v.contains( '\\' ) )
+    return v.replace( '\\', "\\\\" ).prepend( "E'" ).append( '\'' );
+  else
+    return v.prepend( '\'' ).append( '\'' );
+}
+
+static QString doubleQuotedMapValue( QString v )
+{
+  return "\"" + v.replace( '\\', "\\\\\\\\" ).replace( '\"', "\\\\\"" ).replace( '\'', "\\'" ) + "\"";
+}
+
+static QString quotedMap( const QVariantMap& map )
+{
+  QString ret;
+  for ( auto i = map.constBegin(); i != map.constEnd(); ++i )
+  {
+    if ( !ret.isEmpty() )
+    {
+      ret += ",";
+    }
+    ret.append( doubleQuotedMapValue( i.key() ) + "=>" +
+                doubleQuotedMapValue( i.value().toString() ) );
+  }
+  return "E'" + ret + "'::hstore";
+}
+
 QString QgsPostgresConn::quotedValue( const QVariant& value )
 {
   if ( value.isNull() )
@@ -945,14 +974,12 @@ QString QgsPostgresConn::quotedValue( const QVariant& value )
     case QVariant::Bool:
       return value.toBool() ? "TRUE" : "FALSE";
 
-    default:
+    case QVariant::Map:
+      return quotedMap( value.toMap() );
+
     case QVariant::String:
-      QString v = value.toString();
-      v.replace( '\'', "''" );
-      if ( v.contains( '\\' ) )
-        return v.replace( '\\', "\\\\" ).prepend( "E'" ).append( '\'' );
-      else
-        return v.prepend( '\'' ).append( '\'' );
+    default:
+      return quotedString( value.toString() );
   }
 }
 

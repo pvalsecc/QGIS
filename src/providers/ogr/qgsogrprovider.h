@@ -292,6 +292,7 @@ class QgsOgrProvider : public QgsVectorDataProvider
     unsigned char *getGeometryPointer( OGRFeatureH fet );
     QString ogrWkbGeometryTypeName( OGRwkbGeometryType type ) const;
     OGRwkbGeometryType ogrWkbGeometryTypeFromName( const QString& typeName ) const;
+    void setField( OGRFieldType type, const QgsFeatureId &fid, OGRFeatureH of, int f, const QVariant& value );
     QgsFields mAttributeFields;
     bool mFirstFieldIsFid;
     OGRDataSourceH ogrDataSource;

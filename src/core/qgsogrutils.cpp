@@ -18,6 +18,7 @@
 #include "qgslogger.h"
 #include "qgsgeometry.h"
 #include "qgsfield.h"
+#include "qgsjsonutils.h"
 #include <QTextCodec>
 #include <QUuid>
 
@@ -56,6 +57,40 @@ QgsFeature QgsOgrUtils::readOgrFeature( OGRFeatureH ogrFet, const QgsFields& fie
   return feature;
 }
 
+QgsOgrUtils::TypePair QgsOgrUtils::ogrTypeToVariant( OGRFieldType ogrType )
+{
+  switch ( ogrType )
+  {
+    case OFTInteger:
+      return TypePair( QVariant::Int, QVariant::Invalid);
+#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
+    case OFTInteger64:
+      return TypePair( QVariant::LongLong, QVariant::Invalid);
+    case OFTInteger64List:
+      return TypePair( QVariant::List, QVariant::LongLong );
+#endif
+    case OFTReal:
+      return TypePair(  QVariant::Double, QVariant::Invalid);
+#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 1400
+    case OFTDate:
+      return TypePair( QVariant::Date, QVariant::Invalid);
+    case OFTTime:
+      return TypePair( QVariant::Time, QVariant::Invalid);
+    case OFTDateTime:
+      return TypePair( QVariant::DateTime, QVariant::Invalid);
+    case OFTStringList:
+      return TypePair( QVariant::StringList, QVariant::String );
+    case OFTIntegerList:
+      return TypePair( QVariant::List, QVariant::Int );
+    case OFTRealList:
+      return TypePair( QVariant::List, QVariant::Double );
+    case OFTString:
+#endif
+    default:
+      return TypePair( QVariant::String, QVariant::Invalid); // other unsupported, leave it as a string
+  }
+}
+
 QgsFields QgsOgrUtils::readOgrFields( OGRFeatureH ogrFet, QTextCodec* encoding )
 {
   QgsFields fields;
@@ -74,36 +109,8 @@ QgsFields QgsOgrUtils::readOgrFields( OGRFeatureH ogrFet, QTextCodec* encoding )
     }
 
     QString name = encoding ? encoding->toUnicode( OGR_Fld_GetNameRef( fldDef ) ) : QString::fromUtf8( OGR_Fld_GetNameRef( fldDef ) );
-    QVariant::Type varType;
-    switch ( OGR_Fld_GetType( fldDef ) )
-    {
-      case OFTInteger:
-        varType = QVariant::Int;
-        break;
-#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
-      case OFTInteger64:
-        varType = QVariant::LongLong;
-        break;
-#endif
-      case OFTReal:
-        varType = QVariant::Double;
-        break;
-#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 1400
-      case OFTDate:
-        varType = QVariant::Date;
-        break;
-      case OFTTime:
-        varType = QVariant::Time;
-        break;
-      case OFTDateTime:
-        varType = QVariant::DateTime;
-        break;
-      case OFTString:
-#endif
-      default:
-        varType = QVariant::String; // other unsupported, leave it as a string
-    }
-    fields.append( QgsField( name, varType ) );
+    TypePair varType = ogrTypeToVariant( OGR_Fld_GetType( fldDef ) );
+    fields.append( QgsField( name, varType.first, QString(), 0, 0, QString(), varType.second ) );
   }
   return fields;
 }
@@ -135,7 +142,8 @@ QVariant QgsOgrUtils::getOgrFeatureAttribute( OGRFeatureH ogrFet, const QgsField
 
   if ( OGR_F_IsFieldSet( ogrFet, attIndex ) )
   {
-    switch ( fields.at( attIndex ).type() )
+    const QgsField field = fields.at( attIndex );
+    switch ( field.type() )
     {
       case QVariant::String:
       {
@@ -163,14 +171,25 @@ QVariant QgsOgrUtils::getOgrFeatureAttribute( OGRFeatureH ogrFet, const QgsField
         int year, month, day, hour, minute, second, tzf;
 
         OGR_F_GetFieldAsDateTime( ogrFet, attIndex, &year, &month, &day, &hour, &minute, &second, &tzf );
-        if ( fields.at( attIndex ).type() == QVariant::Date )
+        if ( field.type() == QVariant::Date )
           value = QDate( year, month, day );
-        else if ( fields.at( attIndex ).type() == QVariant::Time )
+        else if ( field.type() == QVariant::Time )
           value = QTime( hour, minute, second );
         else
           value = QDateTime( QDate( year, month, day ), QTime( hour, minute, second ) );
       }
       break;
+      case QVariant::StringList:
+      case QVariant::List:
+      {
+        QString json;
+        if ( encoding )
+          json = encoding->toUnicode( OGR_F_GetFieldAsString( ogrFet, attIndex ) );
+        else
+          json = QString::fromUtf8( OGR_F_GetFieldAsString( ogrFet, attIndex ) );
+        value = QgsJSONUtils::parseArray( json, field.subType() );
+        break;
+      }
       default:
         Q_ASSERT_X( false, "QgsOgrUtils::getOgrFeatureAttribute", "unsupported field type" );
         if ( ok )

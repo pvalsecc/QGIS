@@ -20,6 +20,7 @@ email                : sherman at mrcc.com
 #include "qgslogger.h"
 #include "qgsmessagelog.h"
 #include "qgslocalec.h"
+#include "qgsogrutils.h"
 
 #define CPL_SUPRESS_CPLUSPLUS
 #include <gdal.h>         // to collect version information
@@ -78,10 +79,58 @@ class QgsCPLErrorHandler
     }
 };
 
+static OGRFieldType variantToOgrType( QVariant::Type type, QVariant::Type subType )
+{
+  switch ( type )
+  {
+    case QVariant::LongLong:
+#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
+      return OFTInteger64;
+#else
+      return OFTString;
+#endif
+    case QVariant::String:
+      return OFTString;
+    case QVariant::Int:
+      return OFTInteger;
+    case QVariant::Double:
+      return OFTReal;
+    case QVariant::Date:
+      return OFTDate;
+    case QVariant::Time:
+      return OFTTime;
+    case QVariant::DateTime:
+      return OFTDateTime;
+    case QVariant::StringList:
+      return OFTStringList;
+    case QVariant::List:
+      switch ( subType )
+      {
+        case QVariant::Int:
+          return OFTIntegerList;
+        case QVariant::Double:
+          return OFTRealList;
+#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
+        case QVariant::LongLong:
+          return OFTInteger64List;
+#endif
+        default:
+          return OFTStringList;
+      }
+
+    default:
+      return static_cast<OGRFieldType>(-1);
+  }
+}
+
 
 bool QgsOgrProvider::convertField( QgsField &field, const QTextCodec &encoding )
 {
-  OGRFieldType ogrType = OFTString; //default to string
+  const OGRFieldType ogrType = variantToOgrType( field.type(), field.subType() );
+  if ( ogrType == -1 )
+  {
+    return false;
+  }
   int ogrWidth = field.length();
   int ogrPrecision = field.precision();
   if ( ogrPrecision > 0 )
@@ -90,45 +139,26 @@ bool QgsOgrProvider::convertField( QgsField &field, const QTextCodec &encoding )
   {
     case QVariant::LongLong:
 #if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
-      ogrType = OFTInteger64;
       ogrPrecision = 0;
 #else
-      ogrType = OFTString;
       ogrPrecision = -1;
 #endif
       ogrWidth = ogrWidth > 0 && ogrWidth <= 21 ? ogrWidth : 21;
       break;
 
     case QVariant::String:
-      ogrType = OFTString;
       if ( ogrWidth < 0 || ogrWidth > 255 )
         ogrWidth = 255;
       break;
 
     case QVariant::Int:
-      ogrType = OFTInteger;
       ogrWidth = ogrWidth > 0 && ogrWidth <= 10 ? ogrWidth : 10;
       ogrPrecision = 0;
       break;
 
-    case QVariant::Double:
-      ogrType = OFTReal;
-      break;
-
-    case QVariant::Date:
-      ogrType = OFTDate;
-      break;
-
-    case QVariant::Time:
-      ogrType = OFTTime;
-      break;
-
-    case QVariant::DateTime:
-      ogrType = OFTDateTime;
-      break;
-
     default:
-      return false;
+      // Nothing
+      break;
   }
 
   field.setTypeName( encoding.toUnicode( OGR_GetFieldTypeName( ogrType ) ) );
@@ -816,35 +846,7 @@ void QgsOgrProvider::loadFields()
     {
       OGRFieldDefnH fldDef = OGR_FD_GetFieldDefn( fdef, i );
       OGRFieldType ogrType = OGR_Fld_GetType( fldDef );
-      QVariant::Type varType;
-      switch ( ogrType )
-      {
-        case OFTInteger:
-          varType = QVariant::Int;
-          break;
-#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
-        case OFTInteger64:
-          varType = QVariant::LongLong;
-          break;
-#endif
-        case OFTReal:
-          varType = QVariant::Double;
-          break;
-#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 1400
-        case OFTDate:
-          varType = QVariant::Date;
-          break;
-        case OFTTime:
-          varType = QVariant::Time;
-          break;
-        case OFTDateTime:
-          varType = QVariant::DateTime;
-          break;
-        case OFTString:
-#endif
-        default:
-          varType = QVariant::String; // other unsupported, leave it as a string
-      }
+      QgsOgrUtils::TypePair varType = QgsOgrUtils::ogrTypeToVariant( ogrType );
 
       //TODO: fix this hack
 #ifdef ANDROID
@@ -873,13 +875,13 @@ void QgsOgrProvider::loadFields()
       mAttributeFields.append(
         QgsField(
           name,
-          varType,
+          varType.first,
 #ifdef ANDROID
           OGR_GetFieldTypeName( ogrType ),
 #else
           mEncoding->toUnicode( OGR_GetFieldTypeName( ogrType ) ),
 #endif
-          width, prec
+          width, prec, QString(), varType.second
         )
       );
     }
@@ -1139,72 +1141,8 @@ bool QgsOgrProvider::addFeature( QgsFeature& f )
     OGRFieldDefnH fldDef = OGR_FD_GetFieldDefn( fdef, ogrAttId );
     OGRFieldType type = OGR_Fld_GetType( fldDef );
 
-    QVariant attrVal = attrs.at( qgisAttId );
-    if ( attrVal.isNull() || ( type != OFTString && attrVal.toString().isEmpty() ) )
-    {
-      OGR_F_UnsetField( feature, ogrAttId );
-    }
-    else
-    {
-      switch ( type )
-      {
-        case OFTInteger:
-          OGR_F_SetFieldInteger( feature, ogrAttId, attrVal.toInt() );
-          break;
-
-
-#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
-        case OFTInteger64:
-          OGR_F_SetFieldInteger64( feature, ogrAttId, attrVal.toLongLong() );
-          break;
-#endif
-
-        case OFTReal:
-          OGR_F_SetFieldDouble( feature, ogrAttId, attrVal.toDouble() );
-          break;
-
-        case OFTDate:
-          OGR_F_SetFieldDateTime( feature, ogrAttId,
-                                  attrVal.toDate().year(),
-                                  attrVal.toDate().month(),
-                                  attrVal.toDate().day(),
-                                  0, 0, 0,
-                                  0 );
-          break;
-
-        case OFTTime:
-          OGR_F_SetFieldDateTime( feature, ogrAttId,
-                                  0, 0, 0,
-                                  attrVal.toTime().hour(),
-                                  attrVal.toTime().minute(),
-                                  attrVal.toTime().second(),
-                                  0 );
-          break;
-
-        case OFTDateTime:
-          OGR_F_SetFieldDateTime( feature, ogrAttId,
-                                  attrVal.toDateTime().date().year(),
-                                  attrVal.toDateTime().date().month(),
-                                  attrVal.toDateTime().date().day(),
-                                  attrVal.toDateTime().time().hour(),
-                                  attrVal.toDateTime().time().minute(),
-                                  attrVal.toDateTime().time().second(),
-                                  0 );
-          break;
-
-        case OFTString:
-          QgsDebugMsg( QString( "Writing string attribute %1 with %2, encoding %3" )
-                       .arg( qgisAttId )
-                       .arg( attrVal.toString(),
-                             mEncoding->name().data() ) );
-          OGR_F_SetFieldString( feature, ogrAttId, mEncoding->fromUnicode( attrVal.toString() ).constData() );
-          break;
-
-        default:
-          QgsMessageLog::logMessage( tr( "type %1 for attribute %2 not found" ).arg( type ).arg( qgisAttId ), tr( "OGR" ) );
-          break;
-      }
-    }
+    const QVariant attrVal = attrs.at( qgisAttId );
+    setField( type, f.id(), feature, ogrAttId, attrVal );
   }
 
   if ( OGR_L_CreateFeature( ogrLayer, feature ) != OGRERR_NONE )
@@ -1278,47 +1216,22 @@ bool QgsOgrProvider::addAttributes( const QList<QgsField> &attributes )
 
   for ( QList<QgsField>::const_iterator iter = attributes.begin(); iter != attributes.end(); ++iter )
   {
-    OGRFieldType type;
-
-    switch ( iter->type() )
+    const OGRFieldType type = variantToOgrType( iter->type(), iter->subType() );
+    if ( type == -1 )
     {
-      case QVariant::Int:
-        type = OFTInteger;
-        break;
-#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
-      case QVariant::LongLong:
-      {
-        const char* pszDataTypes = GDALGetMetadataItem( ogrDriver, GDAL_DMD_CREATIONFIELDDATATYPES, NULL );
-        if ( pszDataTypes && strstr( pszDataTypes, "Integer64" ) )
-          type = OFTInteger64;
-        else
-        {
-          mapFieldTypesToPatch[ iter->name()] = iter->type();
-          type = OFTReal;
-        }
-        break;
-      }
-#endif
-      case QVariant::Double:
-        type = OFTReal;
-        break;
-      case QVariant::Date:
-        type = OFTDate;
-        break;
-      case QVariant::Time:
-        type = OFTTime;
-        break;
-      case QVariant::DateTime:
-        type = OFTDateTime;
-        break;
-      case QVariant::String:
-        type = OFTString;
-        break;
-      default:
-        pushError( tr( "type %1 for field %2 not found" ).arg( iter->typeName(), iter->name() ) );
-        returnvalue = false;
-        continue;
+      pushError( tr( "type %1 for field %2 not found" ).arg( iter->typeName(), iter->name() ) );
+      returnvalue = false;
+      continue;
     }
+#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
+    if ( iter->type() == QVariant::LongLong )
+    {
+      const char* pszDataTypes = GDALGetMetadataItem( ogrDriver, GDAL_DMD_CREATIONFIELDDATATYPES, NULL );
+      if ( !( pszDataTypes && strstr( pszDataTypes, "Integer64" ) ) )
+        mapFieldTypesToPatch[ iter->name()] = iter->type();
+      break;
+    }
+#endif
 
     OGRFieldDefnH fielddefn = OGR_Fld_Create( mEncoding->fromUnicode( iter->name() ).constData(), type );
     int width = iter->length();
@@ -1442,6 +1355,67 @@ bool QgsOgrProvider::renameAttributes( const QgsFieldNameMap& renamedAttributes 
 #endif
 }
 
+void QgsOgrProvider::setField( OGRFieldType type, const QgsFeatureId &fid, OGRFeatureH of, int f, const QVariant& value )
+{
+  if ( value.isNull() || ( type != OFTString && value.toString().isEmpty() ) )
+  {
+    OGR_F_UnsetField( of, f );
+    return;
+  }
+
+  switch ( type )
+  {
+    case OFTInteger:
+      OGR_F_SetFieldInteger( of, f, value.toInt() );
+      break;
+#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
+    case OFTInteger64:
+      OGR_F_SetFieldInteger64( of, f, value.toLongLong() );
+      break;
+#endif
+    case OFTReal:
+      OGR_F_SetFieldDouble( of, f, value.toDouble() );
+      break;
+    case OFTDate:
+      OGR_F_SetFieldDateTime( of, f,
+                              value.toDate().year(),
+                              value.toDate().month(),
+                              value.toDate().day(),
+                              0, 0, 0,
+                              0 );
+      break;
+    case OFTTime:
+      OGR_F_SetFieldDateTime( of, f,
+                              0, 0, 0,
+                              value.toTime().hour(),
+                              value.toTime().minute(),
+                              value.toTime().second(),
+                              0 );
+      break;
+    case OFTDateTime:
+      OGR_F_SetFieldDateTime( of, f,
+                              value.toDateTime().date().year(),
+                              value.toDateTime().date().month(),
+                              value.toDateTime().date().day(),
+                              value.toDateTime().time().hour(),
+                              value.toDateTime().time().minute(),
+                              value.toDateTime().time().second(),
+                              0 );
+      break;
+    case OFTString:
+      OGR_F_SetFieldString( of, f, mEncoding->fromUnicode( value.toString() ).constData() );
+      break;
+    
+    case OFTIntegerList:
+    case OFTStringList:
+    case OFTReal:
+      //TODO
+      break;
+    default:
+      pushError( tr( "Type %1 of attribute %2 of feature %3 unknown." ).arg( type ).arg( fid ).arg( f ) );
+      break;
+  }
+}
 
 bool QgsOgrProvider::changeAttributeValues( const QgsChangedAttributesMap &attr_map )
 {
@@ -1504,62 +1478,8 @@ bool QgsOgrProvider::changeAttributeValues( const QgsChangedAttributesMap &attr_
         continue;
       }
 
-      OGRFieldType type = OGR_Fld_GetType( fd );
-
-      if ( it2->isNull() || ( type != OFTString && it2->toString().isEmpty() ) )
-      {
-        OGR_F_UnsetField( of, f );
-      }
-      else
-      {
-
-        switch ( type )
-        {
-          case OFTInteger:
-            OGR_F_SetFieldInteger( of, f, it2->toInt() );
-            break;
-#if defined(GDAL_VERSION_NUM) && GDAL_VERSION_NUM >= 2000000
-          case OFTInteger64:
-            OGR_F_SetFieldInteger64( of, f, it2->toLongLong() );
-            break;
-#endif
-          case OFTReal:
-            OGR_F_SetFieldDouble( of, f, it2->toDouble() );
-            break;
-          case OFTDate:
-            OGR_F_SetFieldDateTime( of, f,
-                                    it2->toDate().year(),
-                                    it2->toDate().month(),
-                                    it2->toDate().day(),
-                                    0, 0, 0,
-                                    0 );
-            break;
-          case OFTTime:
-            OGR_F_SetFieldDateTime( of, f,
-                                    0, 0, 0,
-                                    it2->toTime().hour(),
-                                    it2->toTime().minute(),
-                                    it2->toTime().second(),
-                                    0 );
-            break;
-          case OFTDateTime:
-            OGR_F_SetFieldDateTime( of, f,
-                                    it2->toDateTime().date().year(),
-                                    it2->toDateTime().date().month(),
-                                    it2->toDateTime().date().day(),
-                                    it2->toDateTime().time().hour(),
-                                    it2->toDateTime().time().minute(),
-                                    it2->toDateTime().time().second(),
-                                    0 );
-            break;
-          case OFTString:
-            OGR_F_SetFieldString( of, f, mEncoding->fromUnicode( it2->toString() ).constData() );
-            break;
-          default:
-            pushError( tr( "Type %1 of attribute %2 of feature %3 unknown." ).arg( type ).arg( fid ).arg( f ) );
-            break;
-        }
-      }
+      const OGRFieldType type = OGR_Fld_GetType( fd );
+      setField( type, fid, of, f, *it2 );
     }
 
     if ( OGR_L_SetFeature( ogrLayer, of ) != OGRERR_NONE )

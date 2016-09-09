@@ -104,6 +104,10 @@ class CORE_EXPORT QgsOgrUtils
      * @see stringToFeatureList()
      */
     static QgsFields stringToFields( const QString& string, QTextCodec* encoding );
+
+    typedef QPair<QVariant::Type, QVariant::Type> TypePair;
+
+    static TypePair ogrTypeToVariant( OGRFieldType ogrType );
 };
 
 #endif // QGSOGRUTILS_H
